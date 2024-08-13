@@ -1,22 +1,34 @@
+from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import render, redirect
 
 from .forms import TopicForm, EntryForm
 from .models import Topic, Entry
 
 
+def check_topic_owner(topic, request):
+    if topic.owner != request.user:
+        raise Http404
+
+
 def index(request):
     return render(request, 'core_app/index.html')
 
 
+@login_required
 def get_topics(request):
-    topics = Topic.objects.order_by('date_added')
+    topics = Topic.objects.filter(owner=request.user).order_by('date_added')
     context = {'topics': topics}
 
     return render(request, 'core_app/topics.html', context)
 
 
+@login_required
 def get_topic(request, topic_id):
     topic = Topic.objects.get(id=topic_id)
+
+    check_topic_owner(topic, request)
+
     entries = topic.entry_set.order_by('-date_added')
     context = {'topic': topic,
                'entries': entries}
@@ -24,21 +36,27 @@ def get_topic(request, topic_id):
     return render(request, "core_app/topic.html", context)
 
 
+@login_required
 def add_new_topic(request):
     if request.method != 'POST':
         form = TopicForm()
     else:
         form = TopicForm(data=request.POST)
         if form.is_valid():
-            form.save()
+            new_topic = form.save(commit=False)
+            new_topic.owner = request.user
+            new_topic.save()
             return redirect('core_app:topics')
 
     context = {'form': form}
     return render(request, "core_app/new_topic.html", context)
 
 
+@login_required
 def add_new_entry(request, topic_id):
     topic = Topic.objects.get(id=topic_id)
+
+    check_topic_owner(topic, request)
 
     if request.method != 'POST':
         form = EntryForm()
@@ -55,9 +73,12 @@ def add_new_entry(request, topic_id):
     return render(request, 'core_app/new_entry.html', context)
 
 
+@login_required
 def edit_entry(request, entry_id):
     entry = Entry.objects.get(id=entry_id)
     topic = entry.topic
+
+    check_topic_owner(topic, request)
 
     if request.method != 'POST':
         form = EntryForm(instance=entry)
